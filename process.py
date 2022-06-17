@@ -16,6 +16,7 @@ zoom = 15
 format = 'image/png'
 url = ''
 proj = 'EPSG:3857'
+limit_requests = 1000
 
 parser = argparse.ArgumentParser(description='Script to download images from a WMTS service')
 parser.add_argument('url', type=str, metavar='WMTS server url', help='Server url (default: %(default)s)')
@@ -24,6 +25,8 @@ parser.add_argument('--format', type=str, metavar='Image format', default=format
 parser.add_argument('--zoom', type=int, metavar='Zoom level', default=zoom, help='Zoom level. Higher number is more detail, and more images (default: %(default)s)')
 parser.add_argument('--proj', type=str, metavar='EPSG projection code', default=proj, help='EPSG projection code existing in the geoserver (default: %(default)s)')
 parser.add_argument('--output', type=str, metavar='Output folder', default=output_folder, help='Folder to save the images (default: %(default)s)')
+parser.add_argument('--limit', type=int, metavar='Limit requests number', default=limit_requests, help='Limit the requests to avoid overloading the server (default: %(default)s)')
+parser.add_argument('--removeold', action='store_true', help='Remove already downloaded files (default: %(default)s)')
 
 args = parser.parse_args()
 
@@ -50,9 +53,12 @@ def init():
         proj = args.proj
         layer_id = args.layer 
         output_folder = args.output
+        limit_requests = args.limit
+        remove_old = args.removeold
 
         download_count = 1
-              
+        skip_count = 0 
+
         print(f'Connecting to server: {url}')
 
         try:
@@ -118,19 +124,32 @@ def init():
                         max_col = matrix_limits.maxtilecol
 
                         # check if output folder exists
-                        output_folder = f'{output_folder}\\{layer_id}'
+                        output_folder = f'{output_folder}\\{layer_id}\\{proj.replace(":", "-")}\\{zoom}'
 
-                        if os.path.exists(output_folder):
-                            shutil.rmtree(output_folder)
-
-                        os.makedirs(output_folder)
+                        if remove_old:
+                            if os.path.exists(output_folder):
+                                print('Removing old files...')
+                                shutil.rmtree(output_folder)
                         
+                        # create folder if not exists
+                        if not os.path.exists(output_folder):
+                            os.makedirs(output_folder)
+
                         print('\t')
                         print('Downloading images...')
 
                         for row in range(min_row, max_row):
 
-                            for col in range(min_col, max_col):
+                            for col in range(min_col, max_col):     
+                                                      
+                                extension = format.split("/")[-1]
+                                file_name = f'{layer_id}__{proj.replace(":", "-")}_col-{col}_row-{row}_zoom-{zoom}'
+
+                                # skip already downloaded files
+                                if tile_already_exists(file_name, extension):
+                                    print(f'--> Skiping tile ({download_count}): Column {col} - Row {row} - Zoom {zoom}')
+                                    skip_count += 1
+                                    continue
 
                                 print(f'--> Downloading tile ({download_count}): Column {col} - Row {row} - Zoom {zoom}')
 
@@ -144,38 +163,59 @@ def init():
                                     format=format
                                 )
 
-                                extension = format.split("/")[-1]
-
-                                file_name = f'{layer_id}__{proj.replace(":", "-")}_col-{col}_row-{row}_zoom-{zoom}'
-
                                 write_world_file(file_name, extension, col, row, matrix)
                                 
                                 write_image(file_name, extension, img)
+                                
+                                if download_count >= limit_requests:
+                                    break
 
                                 download_count += 1
-        
-        
+                            else:
+                                continue # only executed if the inner loop did NOT break
+                            break  # only executed if the inner loop DID break
+
+        if os.path.exists(tmp_folder):
+            print(f'->Removing tmp files...')
+            shutil.rmtree(tmp_folder)
+
         print('\t')
         print('--> PROCESS WAS COMPLETED <--')
         print('------------------------------')
+        print(f'-> Layer: {layer_id}')
         print(f'-> Format: {format}')
         print(f'-> Projection: {proj}')
         print(f'-> Zoom: {zoom}')
+
+        print('------------------------------')
+
+        if skip_count:
+            print(f'-> Skipped images: {skip_count}')
 
         if download_count:
             print(f'{Fore.GREEN}-> Downloaded files: {download_count}{Style.RESET_ALL}')
         else:
             print(f'{Fore.YELLOW}-> No files downloaded{Style.RESET_ALL}')
+        
+        print('------------------------------')
+        
+        total_tiles = (max_row - min_row) * (max_col - min_col)
+
+        print(f'-> Total tiles in layer: {total_tiles}')
+        print(f'-> Tiles remaining: {total_tiles - (skip_count + download_count)}')
 
         print('------------------------------')
-
-        if os.path.exists(tmp_folder):
-            shutil.rmtree(tmp_folder)
 
     except Exception as error:
         print(f'{Fore.RED}{error}{Style.RESET_ALL}')
         print(traceback.format_exc())
 
+
+
+def tile_already_exists(file_name, extension):
+    file_path = f'{output_folder}\\{file_name}.{extension}'
+    return os.path.exists(file_path)
+    
 
 def write_image(file_name, extension, img):
     '''
