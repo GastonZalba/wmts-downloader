@@ -2,7 +2,7 @@
 Script to download raster layers from WMTS services. The proccess downloads each geoserver tile (256x256), geolocates it, and creates a [world file](https://en.wikipedia.org/wiki/World_file) for each tile. These can then be merged, cropped (and maybe reprojected) using gdal, qgis, etc. Keep it in mind that if the target zoom level is to high, and/or the area of interest is big enough, each execution can trigger thousands or millions of requests to the server, so use this with caution. To avoid overloading the server and facilitate the process, the script can resume incompleted jobs and add some sleep time betweeen requests. Running it multiples times with the same parameters, it will continue from the last downloaded tile.
 
 ## Installation
-- Create local enviroment running `python -m venv .venv` (install [virtualenv](https://virtualenv.pypa.io/en/latest/ if you don't have it)
+- Create local enviroment running `python -m venv .venv` (install [virtualenv](https://virtualenv.pypa.io/en/latest/) if you don't have it)
 - Load local enviroment: `.venv\Scripts\activate`
 - Install using `pip install -r requirements.txt`
 
