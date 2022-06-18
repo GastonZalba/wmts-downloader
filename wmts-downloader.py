@@ -171,7 +171,7 @@ def init():
 
                                 # skip already downloaded files
                                 if tile_already_exists(file_name, extension):
-                                    print(f'--> Skiping tile ({download_count}): Column {col} - Row {row} - Zoom {zoom}')
+                                    print(f'--> Skipped existing tile: Column {col} - Row {row} - Zoom {zoom}')
                                     skip_count += 1
                                     continue
 
