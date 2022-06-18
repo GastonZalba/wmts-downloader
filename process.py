@@ -1,8 +1,10 @@
 import os
+import time
+import math
 import shutil
-import traceback
 import tempfile
 import argparse
+import traceback
 from colorama import init, Fore, Style
 from owslib.wmts import WebMapTileService
 
@@ -17,6 +19,9 @@ format = 'image/png'
 url = ''
 proj = 'EPSG:3857'
 limit_requests = 1000
+bbox = None
+
+sleep = 0 # sleep time between request
 
 parser = argparse.ArgumentParser(description='Script to download images from a WMTS service')
 parser.add_argument('url', type=str, metavar='WMTS server url', help='Server url (default: %(default)s)')
@@ -27,6 +32,8 @@ parser.add_argument('--proj', type=str, metavar='EPSG projection code', default=
 parser.add_argument('--output', type=str, metavar='Output folder', default=output_folder, help='Folder to save the images (default: %(default)s)')
 parser.add_argument('--limit', type=int, metavar='Limit requests number', default=limit_requests, help='Limit the requests to avoid overloading the server (default: %(default)s)')
 parser.add_argument('--removeold', action='store_true', help='Remove already downloaded files (default: %(default)s)')
+parser.add_argument('--sleep', type=float, metavar='Sleep time', default=sleep, help='Sleep time (in seconds) betweeen each reques to avoid overloading the server (default: %(default)s)')
+parser.add_argument('--bbox', type=str, metavar='BBOX', nargs='+', default=bbox, help='Area of interest to filter the requests (default: %(default)s)')
 
 args = parser.parse_args()
 
@@ -55,6 +62,8 @@ def init():
         output_folder = args.output
         limit_requests = args.limit
         remove_old = args.removeold
+        sleep = args.sleep
+        bbox = args.bbox
 
         download_count = 1
         skip_count = 0 
@@ -123,6 +132,8 @@ def init():
                         min_col = matrix_limits.mintilecol
                         max_col = matrix_limits.maxtilecol
 
+                        print(min_col, max_col, min_row, max_row)
+
                         # check if output folder exists
                         output_folder = f'{output_folder}\\{layer_id}\\{proj.replace(":", "-")}\\{zoom}'
 
@@ -137,13 +148,26 @@ def init():
 
                         print('\t')
                         print('Downloading images...')
+                        
+                        if bbox:
+                            (f_min_col, f_max_col, f_min_row, f_max_row) = filter_row_cols_by_bbox(matrix, bbox)
+                            
+                            print(f_min_col, f_max_col, f_min_row, f_max_row)
+
+                            # clamp values
+                            min_col = f_min_col if f_min_col >= min_col else min_col
+                            max_col = f_max_col if f_max_col <= max_col else max_col
+                            min_row = f_min_row if f_min_row >= min_row else min_row
+                            max_row = f_max_row if f_max_row <= max_row else max_row
+                        
+                        print(min_col, max_col, min_row, max_row)
 
                         for row in range(min_row, max_row):
 
-                            for col in range(min_col, max_col):     
+                            for col in range(min_col, max_col):
                                                       
                                 extension = format.split("/")[-1]
-                                file_name = f'{layer_id}__{proj.replace(":", "-")}_col-{col}_row-{row}_zoom-{zoom}'
+                                file_name = f'{layer_id}__{proj.replace(":", "-")}_row-{row}_col-{col}_zoom-{zoom}'
 
                                 # skip already downloaded files
                                 if tile_already_exists(file_name, extension):
@@ -171,6 +195,10 @@ def init():
                                     break
 
                                 download_count += 1
+                                
+                                if sleep:
+                                    time.sleep(sleep)
+
                             else:
                                 continue # only executed if the inner loop did NOT break
                             break  # only executed if the inner loop DID break
@@ -211,6 +239,31 @@ def init():
         print(traceback.format_exc())
 
 
+def filter_row_cols_by_bbox(matrix, bbox):
+    
+    a = matrix.scaledenominator * 0.00028
+    e = matrix.scaledenominator * -0.00028
+
+    column_orig = math.floor((float(bbox[0]) - matrix.topleftcorner[0]) / (a * matrix.tilewidth))
+    row_orig = math.floor((float(bbox[1]) - matrix.topleftcorner[1]) / (e * matrix.tilewidth))
+
+    column_dest = math.floor((float(bbox[2]) - matrix.topleftcorner[0]) / (a * matrix.tilewidth))
+    row_dest = math.floor((float(bbox[3]) - matrix.topleftcorner[1]) / (e * matrix.tilewidth))
+
+    if (column_orig > column_dest):
+        t = column_orig
+        column_orig = column_dest
+        column_dest = t
+
+    if (row_orig > row_dest):
+        t = row_orig
+        row_orig = row_dest
+        row_dest = t
+
+    column_dest += 1
+    row_dest += 1
+
+    return (column_orig, column_dest, row_orig, row_dest)
 
 def tile_already_exists(file_name, extension):
     file_path = f'{output_folder}\\{file_name}.{extension}'
