@@ -85,9 +85,8 @@ def init():
                                 "geom": geom,
                                 "images": []
                             }
-                        else:
-                            collect_path_images[id_carta]['images'].append(
-                                image)
+                        
+                        collect_path_images[id_carta]['images'].append(image)
 
                         print(f'-> Matched image {file_name} with {id_carta}')
                         count += 1
