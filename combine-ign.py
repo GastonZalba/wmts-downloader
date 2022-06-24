@@ -7,7 +7,6 @@ import rasterio
 from rasterio.mask import mask
 from rasterio.merge import merge
 from rasterio.warp import calculate_default_transform, reproject, Resampling
-from rasterio.crs import CRS
 
 from shapely.geometry import box
 
@@ -27,18 +26,24 @@ crs = None
 
 def init():
     try:
-        global output_folder, collect_path_images, crs
+        global output_folder, collect_path_tiles, crs
         
-        count = 0
+        matched_count = 0
 
         if not os.path.exists(tmp_folder):
             os.makedirs(tmp_folder)
 
-        images = get_images()
+        print('--> PROCESS STARTED <--')
+        print('\t')
 
-        collect_path_images = {}
+        tiles = get_images()
+        tiles_count = len(tiles)
 
-        for image in images:
+        collect_path_tiles = {}
+        
+        print(f'Total tiles: {tiles_count}')
+
+        for image in tiles:
             file_name = os.path.basename(image)
             layer_name = file_name.split('__')[0]
             attributes = file_name.split('_')
@@ -58,6 +63,7 @@ def init():
                         # check bands
                         number_bands = src.meta['count']
 
+                        # all tiles must have the same amount of band to be merged                        
                         if number_bands != 4:
 
                             band_1 = src.read(1)
@@ -77,29 +83,33 @@ def init():
                                 dst.write(band_1, 3)
                                 dst.write(band_2, 4)
 
-                        if not id_carta in collect_path_images:
-                            collect_path_images[id_carta] = {
+                        if not id_carta in collect_path_tiles:
+                            collect_path_tiles[id_carta] = {
                                 "path": image,
                                 "faja": faja,
                                 "id_carta": id_carta,
                                 "geom": geom,
-                                "images": []
+                                "tiles": []
                             }
                         
-                        collect_path_images[id_carta]['images'].append(image)
+                        collect_path_tiles[id_carta]['tiles'].append(image)
 
-                        print(f'-> Matched image {file_name} with {id_carta}')
-                        count += 1
+                        matched_count += 1
+
+                        if matched_count % 100 == 0:
+                            print(f'{Fore.GREEN}-> Tiles matched: {matched_count}{Style.RESET_ALL}')
+
+
 
         print('-> Starting conversions')
 
-        for index in collect_path_images:
+        for index in collect_path_tiles:
 
-            images_collected = collect_path_images[index]
-            faja = images_collected['faja']
-            geom = images_collected['geom']
-            images = images_collected['images']
-            id_carta = images_collected['id_carta']
+            tiles_collected = collect_path_tiles[index]
+            faja = tiles_collected['faja']
+            geom = tiles_collected['geom']
+            tiles = tiles_collected['tiles']
+            id_carta = tiles_collected['id_carta']
 
             output_folder_layer = f'{output_folder}/{layer_name}'
 
@@ -111,7 +121,7 @@ def init():
             file_tmp = f'{tmp_folder}/{id_carta}_tmp.tif'
 
             # merge collected
-            merge(images, indexes=[1, 2, 3, 4], dst_path=file_tmp)
+            merge(tiles, indexes=[1, 2, 3, 4], dst_path=file_tmp)
 
             with rasterio.open(file_tmp) as src:
                 out_image, out_transform = mask(src, [geom], crop=True)
@@ -132,18 +142,10 @@ def init():
                 src.write(out_image)
                 src.crs = crs
 
-                dst_crs = None
-
-                # save reprojected
-                if faja == '4':
-                    dst_crs = 'EPSG:5346'
-                elif faja == '5':
-                    dst_crs = 'EPSG:5347'
-                elif faja == '6':
-                    dst_crs = 'EPSG:5348'
+                dst_crs = calculate_epsg(faja)
 
                 if not dst_crs:
-                    print(f'{Fore.RED}Error: {id_carta} has no projection {Style.RESET_ALL}')
+                    print(f'{Fore.RED}Error: {id_carta} has no projection{Style.RESET_ALL}')
                     continue
 
                 transform, width, height = calculate_default_transform(
@@ -180,13 +182,34 @@ def init():
         print('\t')
         print('--> PROCESS WAS COMPLETED <--')
         print('------------------------------')
-        print(f'-> Images matched: {count}')
+        print(f'-> Tiles matched: {matched_count}')
+        print(f'-> Cards matched: {len(collect_path_tiles)}')
         print('------------------------------')
 
     except Exception as error:
         print(f'{Fore.RED}{error}{Style.RESET_ALL}')
         print(traceback.format_exc())
 
+
+def calculate_epsg(faja):
+    if faja == '1':
+        dst_crs = 'EPSG:5343'
+    elif faja == '2':
+        dst_crs = 'EPSG:5344'
+    elif faja == '3':
+        dst_crs = 'EPSG:5345'
+    elif faja == '4':
+        dst_crs = 'EPSG:5346'
+    elif faja == '5':
+        dst_crs = 'EPSG:5347'
+    elif faja == '6':
+        dst_crs = 'EPSG:5348'
+    elif faja == '7':
+        dst_crs = 'EPSG:5349'
+    else:
+        dst_crs = None
+
+    return dst_crs
 
 def get_images():
     types = ('*.png', '*.jpg', '*.jpeg', '*.tiff', '*.tif')

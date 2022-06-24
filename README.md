@@ -13,6 +13,9 @@ Script to download raster layers from WMTS services. The proccess downloads each
 - You can use the `limit` and `sleep` arguments to avoid overloading the target server. You can later rerun the script to continue from the last downloaded tile.
 - Check the console for details and the `/output` folder (the default) for the tiles
 
+### Example to combine tiles
+- Check [combine-ign.py](combine-ign.py) file to see an example to combine, crop and reproject the tiles using a geojson shape as reference.
+
 ## Limitations
 - The projection EPSG:3857 is currently the only one supported
 
