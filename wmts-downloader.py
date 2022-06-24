@@ -205,7 +205,7 @@ def init():
                             break  # only executed if the inner loop DID break
 
         if os.path.exists(tmp_folder):
-            print(f'->Removing tmp files...')
+            print(f'-> Removing tmp files...')
             shutil.rmtree(tmp_folder)
 
         print('\t')
@@ -215,7 +215,6 @@ def init():
         print(f'-> Format: {format}')
         print(f'-> Projection: {proj}')
         print(f'-> Zoom: {zoom}')
-
         print('------------------------------')
 
         if skip_count:
