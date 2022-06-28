@@ -1,4 +1,5 @@
 import os
+import json
 import glob
 import shutil
 import tempfile
@@ -8,7 +9,7 @@ from rasterio.mask import mask
 from rasterio.merge import merge
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 
-from shapely.geometry import box
+from shapely.geometry import box, mapping, shape
 
 import traceback
 import geopandas as gpd
@@ -24,11 +25,13 @@ output_folder = 'output/merged'
 gdf_cards = gpd.read_file('cartas.geojson')
 crs = None
 
+# json to store progress looping the tiles
+json_tmp = 'progress_tmp.json'
+
+
 def init():
     try:
         global output_folder, collect_path_tiles, crs
-        
-        matched_count = 0
 
         if not os.path.exists(tmp_folder):
             os.makedirs(tmp_folder)
@@ -39,18 +42,26 @@ def init():
         tiles = get_images()
         tiles_count = len(tiles)
 
-        collect_path_tiles = {}
-        
+        collect_path_tiles = get_json()
+
+        start = collect_path_tiles['count']
+        matched_count = collect_path_tiles['matched']
+
         print(f'Total tiles: {tiles_count}')
 
-        for image in tiles:
-            file_name = os.path.basename(image)
+        for i in range(start, len(tiles)):
+
+            tile = tiles[i]
+
+            file_name = os.path.basename(tile)
             layer_name = file_name.split('__')[0]
             attributes = file_name.split('_')
             crs = [x for x in attributes if 'EPSG' in x][0].replace(
                 '-', ':')
+            
+            matched = False
 
-            with rasterio.open(image, crs=crs) as src:
+            with rasterio.open(tile, crs=crs) as src:
                 bounds_image = box(*src.bounds)
 
                 for index, carta in gdf_cards.iterrows():
@@ -63,7 +74,7 @@ def init():
                         # check bands
                         number_bands = src.meta['count']
 
-                        # all tiles must have the same amount of band to be merged                        
+                        # all tiles must have the same amount of band to be merged
                         if number_bands != 4:
 
                             band_1 = src.read(1)
@@ -75,39 +86,45 @@ def init():
                                 "count": 4
                             })
 
-                            image = f'{tmp_folder}/{file_name}'
+                            tile = f'{tmp_folder}/{file_name}'
 
-                            with rasterio.open(f'{image}', 'w', **out_meta,) as dst:
+                            with rasterio.open(f'{tile}', 'w', **out_meta,) as dst:
                                 dst.write(band_1, 1)
                                 dst.write(band_1, 2)
                                 dst.write(band_1, 3)
                                 dst.write(band_2, 4)
 
-                        if not id_carta in collect_path_tiles:
-                            collect_path_tiles[id_carta] = {
-                                "path": image,
+                        exists_id = (d['id_carta'] == id_carta for d in collect_path_tiles['images'])
+
+                        if not any(exists_id):
+                            collect_path_tiles['images'].append({
+                                "path": tile,
                                 "faja": faja,
                                 "id_carta": id_carta,
-                                "geom": geom,
-                                "tiles": []
-                            }
-                        
-                        collect_path_tiles[id_carta]['tiles'].append(image)
+                                "geom": mapping(geom),
+                                "tiles": [tile]
+                            })
+                        else:
+                            exists_id['tiles'].append(tile)
 
-                        matched_count += 1
+                        matched = True
+                
+                if matched:
+                    matched_count += 1
 
-                        if matched_count % 100 == 0:
-                            print(f'{Fore.GREEN}-> Tiles matched: {matched_count}{Style.RESET_ALL}')
-
-
+            if (i+1) % 100 == 0:
+                print(f'{Fore.GREEN}-> Tiles matched: {matched_count}/{(i+1)}{Style.RESET_ALL}')
+                collect_path_tiles['count'] = i
+                collect_path_tiles['matched'] = matched_count
+                write_json(collect_path_tiles)
 
         print('-> Starting conversions')
 
-        for index in collect_path_tiles:
+        for index in range(len(collect_path_tiles['images'])):
 
-            tiles_collected = collect_path_tiles[index]
+            tiles_collected = collect_path_tiles['images'][index]
             faja = tiles_collected['faja']
-            geom = tiles_collected['geom']
+            geom = shape(mapping(tiles_collected['geom']))
             tiles = tiles_collected['tiles']
             id_carta = tiles_collected['id_carta']
 
@@ -145,7 +162,8 @@ def init():
                 dst_crs = calculate_epsg(faja)
 
                 if not dst_crs:
-                    print(f'{Fore.RED}Error: {id_carta} has no projection{Style.RESET_ALL}')
+                    print(
+                        f'{Fore.RED}Error: {id_carta} has no projection{Style.RESET_ALL}')
                     continue
 
                 transform, width, height = calculate_default_transform(
@@ -174,7 +192,7 @@ def init():
                             dst_transform=transform,
                             dst_crs=dst_crs,
                             resampling=Resampling.nearest)
-        
+
         if os.path.exists(tmp_folder):
             print(f'-> Removing tmp files...')
             shutil.rmtree(tmp_folder)
@@ -189,6 +207,22 @@ def init():
     except Exception as error:
         print(f'{Fore.RED}{error}{Style.RESET_ALL}')
         print(traceback.format_exc())
+
+
+def get_json():
+    if os.path.exists(json_tmp):
+        with open(json_tmp, 'r') as file:
+            return json.load(file)
+    else:
+        return {
+            'count': 0,
+            'matched': 0
+        }
+
+
+def write_json(dict):
+    with open(json_tmp, 'w') as outfile:
+        json.dump(dict, outfile)
 
 
 def calculate_epsg(faja):
@@ -210,6 +244,7 @@ def calculate_epsg(faja):
         dst_crs = None
 
     return dst_crs
+
 
 def get_images():
     types = ('*.png', '*.jpg', '*.jpeg', '*.tiff', '*.tif')
