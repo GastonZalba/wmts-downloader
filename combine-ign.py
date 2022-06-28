@@ -58,11 +58,11 @@ def init():
             attributes = file_name.split('_')
             crs = [x for x in attributes if 'EPSG' in x][0].replace(
                 '-', ':')
-            
+
             matched = False
 
-            with rasterio.open(tile, crs=crs) as src:
-                bounds_image = box(*src.bounds)
+            with rasterio.open(tile, crs=crs) as dst1:
+                bounds_image = box(*dst1.bounds)
 
                 for index, carta in gdf_cards.iterrows():
                     id_carta = carta['caracteristica_de_hoja']
@@ -72,15 +72,15 @@ def init():
                     if bounds_image.intersects(geom):
 
                         # check bands
-                        number_bands = src.meta['count']
+                        number_bands = dst1.meta['count']
 
                         # all tiles must have the same amount of band to be merged
                         if number_bands != 4:
 
-                            band_1 = src.read(1)
-                            band_2 = src.read(2)
+                            band_1 = dst1.read(1)
+                            band_2 = dst1.read(2)
 
-                            out_meta = src.meta
+                            out_meta = dst1.meta
 
                             out_meta.update({
                                 "count": 4
@@ -88,15 +88,22 @@ def init():
 
                             tile = f'{tmp_folder}/{file_name}'
 
-                            with rasterio.open(f'{tile}', 'w', **out_meta,) as dst:
-                                dst.write(band_1, 1)
-                                dst.write(band_1, 2)
-                                dst.write(band_1, 3)
-                                dst.write(band_2, 4)
+                            with rasterio.open(f'{tile}', 'w', **out_meta,) as dst2:
+                                dst2.write(band_1, 1)
+                                dst2.write(band_1, 2)
+                                dst2.write(band_1, 3)
+                                dst2.write(band_2, 4)
 
-                        exists_id = (d['id_carta'] == id_carta for d in collect_path_tiles['images'])
+                        exists_id = False
 
-                        if not any(exists_id):
+                        for image in collect_path_tiles['images']:
+                            if image['id_carta'] == id_carta:
+                                exists_id = image
+                                break
+
+                        if exists_id:
+                            exists_id['tiles'].append(tile)
+                        else:
                             collect_path_tiles['images'].append({
                                 "path": tile,
                                 "faja": faja,
@@ -104,16 +111,15 @@ def init():
                                 "geom": mapping(geom),
                                 "tiles": [tile]
                             })
-                        else:
-                            exists_id['tiles'].append(tile)
 
                         matched = True
-                
+
                 if matched:
                     matched_count += 1
 
             if (i+1) % 100 == 0:
-                print(f'{Fore.GREEN}-> Tiles matched: {matched_count}/{(i+1)}{Style.RESET_ALL}')
+                print(
+                    f'{Fore.GREEN}-> Tiles matched: {matched_count}/{(i+1)}{Style.RESET_ALL}')
                 collect_path_tiles['count'] = i
                 collect_path_tiles['matched'] = matched_count
                 write_json(collect_path_tiles)
@@ -123,8 +129,9 @@ def init():
         for index in range(len(collect_path_tiles['images'])):
 
             tiles_collected = collect_path_tiles['images'][index]
+
             faja = tiles_collected['faja']
-            geom = shape(mapping(tiles_collected['geom']))
+            geom = shape(tiles_collected['geom'])
             tiles = tiles_collected['tiles']
             id_carta = tiles_collected['id_carta']
 
@@ -140,24 +147,31 @@ def init():
             # merge collected
             merge(tiles, indexes=[1, 2, 3, 4], dst_path=file_tmp)
 
-            with rasterio.open(file_tmp) as src:
-                out_image, out_transform = mask(src, [geom], crop=True)
-                out_meta = src.meta
+            with rasterio.open(file_tmp) as dst1:
+                out_image, out_transform = mask(dst1, [geom], crop=True)
+                out_meta = dst1.meta
 
-            # crop
+            # crop original
             out_meta.update({
                 "driver": "GTiff",
                 "height": out_image.shape[1],
                 "width": out_image.shape[2],
                 "transform": out_transform,
                 'src_crs': crs,
-                'dst_crs': crs
+                'dst_crs': crs,
+                'multithread': True,
+                'compress': "JPEG",
+                'jpeg_quality': "80"
             })
 
             # save original projection
-            with rasterio.open(f'{output_folder_layer_crs}/{layer_name}__{id_carta}_{crs.replace(":", "-")}.tif', "w", **out_meta) as src:
-                src.write(out_image)
-                src.crs = crs
+            with rasterio.open(f'{output_folder_layer_crs}/{layer_name}__{id_carta}_{crs.replace(":", "-")}.tif', "w", **out_meta) as dst1:
+                dst1.write(out_image)
+                dst1.crs = crs
+
+                # build overviews for geoserver
+                dst1.build_overviews(
+                    [2, 4, 8, 16, 32, 64, 128, 256], Resampling.average)
 
                 dst_crs = calculate_epsg(faja)
 
@@ -167,13 +181,16 @@ def init():
                     continue
 
                 transform, width, height = calculate_default_transform(
-                    src.crs, dst_crs, src.width, src.height, *src.bounds)
-                kwargs = src.meta.copy()
+                    dst1.crs, dst_crs, dst1.width, dst1.height, *dst1.bounds)
+                kwargs = dst1.meta.copy()
                 kwargs.update({
                     'crs': dst_crs,
                     'transform': transform,
                     'width': width,
-                    'height': height
+                    'height': height,
+                    'multithread': True,
+                    'compress': "JPEG",
+                    'jpeg_quality': "80"
                 })
 
                 output_folder_layer_crs = f'{output_folder_layer}/{dst_crs.replace(":","-")}'
@@ -182,13 +199,13 @@ def init():
                     os.makedirs(output_folder_layer_crs)
 
                 # save reprojected
-                with rasterio.open(f'{output_folder_layer_crs}/{layer_name}__{id_carta}_{dst_crs.replace(":","-")}.tif', "w", **kwargs) as dst:
-                    for i in range(1, src.count + 1):
+                with rasterio.open(f'{output_folder_layer_crs}/{layer_name}__{id_carta}_{dst_crs.replace(":","-")}.tif', "w", **kwargs) as dst2:
+                    for i in range(1, dst1.count + 1):
                         reproject(
-                            source=rasterio.band(src, i),
-                            destination=rasterio.band(dst, i),
-                            src_transform=src.transform,
-                            src_crs=src.crs,
+                            source=rasterio.band(dst1, i),
+                            destination=rasterio.band(dst2, i),
+                            src_transform=dst1.transform,
+                            src_crs=dst1.crs,
                             dst_transform=transform,
                             dst_crs=dst_crs,
                             resampling=Resampling.nearest)
@@ -216,7 +233,8 @@ def get_json():
     else:
         return {
             'count': 0,
-            'matched': 0
+            'matched': 0,
+            'images': []
         }
 
 
