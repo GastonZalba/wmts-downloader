@@ -161,7 +161,8 @@ def init():
                 'dst_crs': crs,
                 'multithread': True,
                 'compress': "JPEG",
-                'jpeg_quality': "80"
+                'jpeg_quality': "80",
+                "tfw": 'YES'
             })
 
             # save original projection
@@ -190,7 +191,8 @@ def init():
                     'height': height,
                     'multithread': True,
                     'compress': "JPEG",
-                    'jpeg_quality': "80"
+                    'jpeg_quality': "80",
+                    "tfw": 'YES'
                 })
 
                 output_folder_layer_crs = f'{output_folder_layer}/{dst_crs.replace(":","-")}'
@@ -210,10 +212,6 @@ def init():
                             dst_crs=dst_crs,
                             resampling=Resampling.nearest)
 
-        if os.path.exists(tmp_folder):
-            print(f'-> Removing tmp files...')
-            shutil.rmtree(tmp_folder)
-
         print('\t')
         print('--> PROCESS WAS COMPLETED <--')
         print('------------------------------')
@@ -224,6 +222,11 @@ def init():
     except Exception as error:
         print(f'{Fore.RED}{error}{Style.RESET_ALL}')
         print(traceback.format_exc())
+
+    finally:
+        if os.path.exists(tmp_folder):
+            print(f'-> Removing tmp files...')
+            shutil.rmtree(tmp_folder)
 
 
 def get_json():
