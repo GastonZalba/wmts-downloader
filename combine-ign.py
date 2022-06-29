@@ -124,9 +124,13 @@ def init():
                 collect_path_tiles['matched'] = matched_count
                 write_json(collect_path_tiles)
 
-        print('-> Starting conversions')
+        print('-> Starting conversion')
 
-        for index in range(len(collect_path_tiles['images'])):
+        images_len = len(collect_path_tiles['images'])
+
+        print(f'-> {images_len} images to convert')
+
+        for index in range(images_len):
 
             tiles_collected = collect_path_tiles['images'][index]
 
@@ -134,6 +138,8 @@ def init():
             geom = shape(tiles_collected['geom'])
             tiles = tiles_collected['tiles']
             id_carta = tiles_collected['id_carta']
+
+            print(f'-> Conversion Nº{index} - {id_carta}')
 
             output_folder_layer = f'{output_folder}/{layer_name}'
 
@@ -216,7 +222,6 @@ def init():
         print('--> PROCESS WAS COMPLETED <--')
         print('------------------------------')
         print(f'-> Tiles matched: {matched_count}')
-        print(f'-> Cards matched: {len(collect_path_tiles)}')
         print('------------------------------')
 
     except Exception as error:
