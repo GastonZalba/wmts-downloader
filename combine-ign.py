@@ -139,7 +139,7 @@ def init():
             tiles = tiles_collected['tiles']
             id_carta = tiles_collected['id_carta']
 
-            print(f'-> Conversion Nº{index} - {id_carta}')
+            print(f'-> Conversion Nº {index+1} - {id_carta}')
 
             output_folder_layer = f'{output_folder}/{layer_name}'
 
@@ -154,7 +154,7 @@ def init():
             merge(tiles, indexes=[1, 2, 3, 4], dst_path=file_tmp)
 
             with rasterio.open(file_tmp) as dst1:
-                out_image, out_transform = mask(dst1, [geom], crop=True)
+                out_image, out_transform = mask(dst1, [geom], pad=True, crop=True)
                 out_meta = dst1.meta
 
             # crop original
