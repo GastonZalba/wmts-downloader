@@ -144,7 +144,7 @@ def init():
             tiles = tiles_collected['tiles']
             id_carta = tiles_collected['id_carta']
 
-            print(f'-> Conversion Nº{index} - {id_carta}')
+            print(f'-> Conversion Nº {index+1} - {id_carta}')
 
             output_folder_layer = f'{output_folder}/{master_layer_name}'
 
