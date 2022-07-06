@@ -24,6 +24,7 @@ input_folder = 'output/cartas_50k/EPSG-3857/14'
 output_folder = 'output/merged'
 gdf_cards = gpd.read_file('cartas.geojson')
 crs = None
+master_layer_name = None
 
 # json to store progress looping the tiles
 json_tmp = 'progress_tmp.json'
@@ -31,7 +32,7 @@ json_tmp = 'progress_tmp.json'
 
 def init():
     try:
-        global output_folder, collect_path_tiles, crs
+        global output_folder, collect_path_tiles, crs, master_layer_name
 
         if not os.path.exists(tmp_folder):
             os.makedirs(tmp_folder)
@@ -55,6 +56,10 @@ def init():
 
             file_name = os.path.basename(tile)
             layer_name = file_name.split('__')[0]
+
+            if not master_layer_name:
+                master_layer_name = layer_name
+
             attributes = file_name.split('_')
             crs = [x for x in attributes if 'EPSG' in x][0].replace(
                 '-', ':')
@@ -141,7 +146,7 @@ def init():
 
             print(f'-> Conversion Nº{index} - {id_carta}')
 
-            output_folder_layer = f'{output_folder}/{layer_name}'
+            output_folder_layer = f'{output_folder}/{master_layer_name}'
 
             output_folder_layer_crs = f'{output_folder_layer}/{crs.replace(":", "-")}'
 
@@ -151,10 +156,11 @@ def init():
             file_tmp = f'{tmp_folder}/{id_carta}_tmp.tif'
 
             # merge collected
-            merge(tiles, indexes=[1, 2, 3, 4], dst_path=file_tmp)
+            # here we remove the alpha channel `4`
+            merge(tiles, indexes=[1, 2, 3], dst_path=file_tmp)
 
             with rasterio.open(file_tmp) as dst1:
-                out_image, out_transform = mask(dst1, [geom], crop=True)
+                out_image, out_transform = mask(dst1, [geom], crop=True, pad=True, filled=False)
                 out_meta = dst1.meta
 
             # crop original
@@ -166,6 +172,7 @@ def init():
                 'src_crs': crs,
                 'dst_crs': crs,
                 'multithread': True,
+                'photometric': 'YCBCR',
                 'compress': "JPEG",
                 'jpeg_quality': "80",
                 "tfw": 'YES'
@@ -197,6 +204,7 @@ def init():
                     'height': height,
                     'multithread': True,
                     'compress': "JPEG",
+                    'photometric': 'YCBCR',
                     'jpeg_quality': "80",
                     "tfw": 'YES'
                 })
