@@ -231,15 +231,13 @@ def init():
         print('------------------------------')
         print(f'-> Tiles matched: {matched_count}')
         print('------------------------------')
+       
+        if os.path.exists(tmp_folder):
+            print(f'-> Removing tmp files...')
 
     except Exception as error:
         print(f'{Fore.RED}{error}{Style.RESET_ALL}')
         print(traceback.format_exc())
-
-    finally:
-        if os.path.exists(tmp_folder):
-            print(f'-> Removing tmp files...')
-            shutil.rmtree(tmp_folder)
 
 
 def get_json():
