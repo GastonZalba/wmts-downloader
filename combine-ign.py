@@ -1,7 +1,6 @@
 import os
 import json
 import glob
-import shutil
 import tempfile
 import rasterio
 
@@ -20,7 +19,7 @@ init(convert=True)
 
 tmp_folder = f'{tempfile.gettempdir()}\\wmts-downloader'
 
-input_folder = 'output/cartas_50k/EPSG-3857/14'
+input_folder = 'output/cartas_50k/EPSG-3857/15'
 output_folder = 'output/merged'
 gdf_cards = gpd.read_file('cartas.geojson')
 crs = None
@@ -55,7 +54,7 @@ def init():
             tile = tiles[i]
 
             file_name = os.path.basename(tile)
-            layer_name = file_name.split('__')[0]
+            layer_name = file_name.split('__')[0].split('.')[0]
 
             if not master_layer_name:
                 master_layer_name = layer_name
@@ -63,6 +62,8 @@ def init():
             attributes = file_name.split('_')
             crs = [x for x in attributes if 'EPSG' in x][0].replace(
                 '-', ':')
+           
+            zoom = [x for x in attributes if 'zoom' in x][0]
 
             matched = False
 
@@ -146,12 +147,19 @@ def init():
 
             print(f'-> Conversion Nº {index+1} - {id_carta}')
 
-            output_folder_layer = f'{output_folder}/{master_layer_name}'
+            output_folder_layer = f'{output_folder}/{master_layer_name}-{zoom}'
 
             output_folder_layer_crs = f'{output_folder_layer}/{crs.replace(":", "-")}'
 
             if not os.path.exists(output_folder_layer_crs):
                 os.makedirs(output_folder_layer_crs)
+
+
+            file_final = f'{output_folder_layer_crs}/{layer_name}__{id_carta}_{crs.replace(":", "-")}.tif'
+            
+            # skip existing exports
+            if os.path.exists(file_final):
+                continue
 
             file_tmp = f'{tmp_folder}/{id_carta}_tmp.tif'
 
@@ -179,7 +187,7 @@ def init():
             })
 
             # save original projection
-            with rasterio.open(f'{output_folder_layer_crs}/{layer_name}__{id_carta}_{crs.replace(":", "-")}.tif', "w", **out_meta) as dst1:
+            with rasterio.open(file_final, "w", **out_meta) as dst1:
                 dst1.write(out_image)
                 dst1.crs = crs
 
